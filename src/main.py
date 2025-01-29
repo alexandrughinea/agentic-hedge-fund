@@ -1,10 +1,15 @@
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
-from colorama import Fore, Back, Style, init
+from colorama import Fore, Style, init
 import questionary
 import os
 import sys
+import time
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+import argparse
+from tabulate import tabulate
 
 from agents.fundamentals import fundamentals_agent
 from agents.portfolio_manager import portfolio_management_agent
@@ -18,26 +23,10 @@ from utils.analysts import ANALYST_ORDER
 from utils.progress import progress
 from agents.trading_executor import TradingExecutor
 
-import argparse
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from tabulate import tabulate
-
 # Load environment variables from .env file
 load_dotenv()
 
 init(autoreset=True)
-
-
-def parse_hedge_fund_response(response):
-    import json
-
-    try:
-        return json.loads(response)
-    except:
-        print(f"Error parsing response: {response}")
-        return None
-
 
 ##### Run the Hedge Fund #####
 def run_hedge_fund(
@@ -137,84 +126,23 @@ def create_workflow(selected_analysts=None):
     return workflow
 
 
-if __name__ == "__main__":
-    # Check if any command line arguments were provided
-    cli_mode = len(sys.argv) > 1
-    
-    # Get analysts from environment variable
-    env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
-    selected_analysts = [a.strip() for a in env_analysts.split(",")] if env_analysts else []
-    
-    # Only show CLI interface if in CLI mode and no analysts configured
-    if cli_mode and not selected_analysts:
-        parser = argparse.ArgumentParser(description="Run the hedge fund trading system")
-        parser.add_argument(
-            "--initial-cash",
-            type=float,
-            default=float(os.getenv("INITIAL_CASH", "100000.0")),
-            help="Initial cash position. Defaults to env INITIAL_CASH or 100000.0"
-        )
-        parser.add_argument(
-            "--tickers",
-            type=str,
-            default=os.getenv("TICKERS"),
-            help="Comma-separated list of stock ticker symbols. Defaults to env TICKERS"
-        )
-        parser.add_argument(
-            "--start-date",
-            type=str,
-            default=os.getenv("START_DATE"),
-            help="Start date (YYYY-MM-DD). Defaults to env START_DATE or 3 months before end date",
-        )
-        parser.add_argument(
-            "--end-date",
-            type=str,
-            default=os.getenv("END_DATE"),
-            help="End date (YYYY-MM-DD). Defaults to env END_DATE or today"
-        )
-        parser.add_argument(
-            "--show-reasoning",
-            action="store_true",
-            default=os.getenv("SHOW_REASONING", "").lower() == "true",
-            help="Show reasoning from each agent. Defaults to env SHOW_REASONING"
-        )
+def parse_hedge_fund_response(response):
+    import json
 
-        args = parser.parse_args()
+    try:
+        return json.loads(response)
+    except:
+        print(f"Error parsing response: {response}")
+        return None
 
-        if not args.tickers:
-            raise ValueError("No tickers specified. Set either --tickers argument or TICKERS environment variable")
 
-        # Parse tickers from comma-separated string
-        tickers = [ticker.strip() for ticker in args.tickers.split(",")]
-
-        # Only show analyst selection if no analysts configured in env
-        choices = questionary.checkbox(
-            "Select your AI analysts.",
-            choices=[questionary.Choice(display, value=value) for display, value in ANALYST_ORDER],
-            instruction="\n\nInstructions: \n1. Press Space to select/unselect analysts.\n2. Press 'a' to select/unselect all.\n3. Press Enter when done to run the hedge fund.\n",
-            validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
-            style=questionary.Style(
-                [
-                    ("checkbox-selected", "fg:green"),
-                    ("selected", "fg:green noinherit"),
-                    ("highlighted", "noinherit"),
-                    ("pointer", "noinherit"),
-                ]
-            ),
-        ).ask()
-
-        if not choices:
-            print("You must select at least one analyst. Using all analysts by default.")
-            selected_analysts = [value for _, value in ANALYST_ORDER]
-        else:
-            selected_analysts = choices
-            print(f"\nSelected analysts: {', '.join(Fore.GREEN + choice.title().replace('_', ' ') + Style.RESET_ALL for choice in choices)}\n")
-    else:
-        # Use environment variables for everything
-        tickers = [ticker.strip() for ticker in os.getenv("TICKERS", "").split(",")]
-        if not tickers or not tickers[0]:
-            raise ValueError("No tickers specified in TICKERS environment variable")
-            
+def run_trading_cycle(tickers: list, selected_analysts: list = None):
+    """Run a single trading cycle"""
+    if selected_analysts is None:
+        # Get analysts from environment variable
+        env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
+        selected_analysts = [a.strip() for a in env_analysts.split(",")] if env_analysts else []
+        
         # If no analysts configured, use all
         if not selected_analysts:
             selected_analysts = [value for _, value in ANALYST_ORDER]
@@ -247,4 +175,85 @@ if __name__ == "__main__":
         show_reasoning=os.getenv("SHOW_REASONING", "").lower() == "true",
         selected_analysts=selected_analysts,
     )
-    print_trading_output(result)
+    return result
+
+
+def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='AI Hedge Fund')
+    parser.add_argument('--tickers', type=str, help='Comma-separated list of tickers')
+    parser.add_argument('--initial-cash', type=float, help='Initial cash position')
+    parser.add_argument('--start-date', type=str, help='Start date (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=str, help='End date (YYYY-MM-DD)')
+    parser.add_argument('--show-reasoning', action='store_true', help='Show detailed reasoning')
+    parser.add_argument('--autonomous', action='store_true', help='Run in autonomous mode')
+    parser.add_argument('--interval', type=int, help='Trading interval in minutes (autonomous mode only)')
+    args = parser.parse_args()
+
+    # Get configuration from environment or CLI args
+    tickers = args.tickers or os.getenv('TICKERS', 'AAPL,MSFT,GOOGL')
+    tickers = [t.strip() for t in tickers.split(',')]
+
+    # Check for autonomous mode from CLI or env
+    autonomous_mode = args.autonomous or os.getenv('AUTONOMOUS_MODE', '').lower() == 'true'
+
+    if autonomous_mode:
+        from scheduler import TradingScheduler
+
+        # Get autonomous mode settings
+        interval = args.interval or int(os.getenv('TRADING_INTERVAL', '60'))
+        market_hours_only = os.getenv('MARKET_HOURS_ONLY', 'true').lower() == 'true'
+        timezone = os.getenv('TRADING_TIMEZONE', 'America/New_York')
+
+        # Initialize scheduler with configuration
+        scheduler = TradingScheduler(
+            tickers=tickers,
+            trading_hours_only=market_hours_only,
+            timezone=timezone
+        )
+
+        try:
+            scheduler.start(interval_minutes=interval)
+            print(f"Running in autonomous mode. Trading every {interval} minutes.")
+            print(f"Market hours only: {market_hours_only}")
+            print(f"Timezone: {timezone}")
+            print("Press Ctrl+C to stop...")
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\nStopping autonomous trading...")
+            scheduler.stop()
+    else:
+        # Interactive mode
+        if len(sys.argv) > 1:  # CLI mode
+            # Show analyst selection if not configured
+            env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
+            if not env_analysts:
+                choices = questionary.checkbox(
+                    "Select your AI analysts.",
+                    choices=[questionary.Choice(display, value=value) for display, value in ANALYST_ORDER],
+                    instruction="\n\nInstructions: \n1. Press Space to select/unselect analysts.\n2. Press 'a' to select/unselect all.\n3. Press Enter when done to run the hedge fund.\n",
+                    validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
+                    style=questionary.Style([
+                        ("checkbox-selected", "fg:green"),
+                        ("selected", "fg:green noinherit"),
+                        ("highlighted", "noinherit"),
+                        ("pointer", "noinherit"),
+                    ]),
+                ).ask()
+                
+                if choices:
+                    selected_analysts = choices
+                    print(f"\nSelected analysts: {', '.join(Fore.GREEN + choice.title().replace('_', ' ') + Style.RESET_ALL for choice in choices)}\n")
+                else:
+                    selected_analysts = None
+            else:
+                selected_analysts = None
+        else:
+            selected_analysts = None
+
+        result = run_trading_cycle(tickers, selected_analysts)
+        print_trading_output(result)
+
+if __name__ == "__main__":
+    main()

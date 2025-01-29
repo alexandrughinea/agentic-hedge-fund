@@ -106,7 +106,7 @@ ALPACA_API_SECRET=your-alpaca-secret-key
 
 ### Running the Hedge Fund
 
-The hedge fund can be run in two modes:
+The hedge fund can be run in three modes:
 
 #### 1. Environment Variable Mode (Recommended)
 
@@ -154,18 +154,48 @@ Available CLI arguments:
 --show-reasoning: Show detailed reasoning from each analyst
 ```
 
-### Available Analysts
+#### 3. Autonomous Mode
 
-The following analysts are available:
-- `technical_analyst`: Price patterns, trends, and technical indicators
-- `fundamentals_analyst`: Financial statements and metrics analysis
-- `sentiment_analyst`: News and market sentiment analysis
-- `valuation_analyst`: Intrinsic value calculation using multiple methods
+Run the system continuously with scheduled trading:
+```bash
+# Via environment variables
+AUTONOMOUS_MODE=true
+TRADING_INTERVAL=60
+poetry run python src/main.py
 
-You can configure which analysts to use by:
-1. Setting `SELECTED_ANALYSTS` in your `.env` file
-2. Using CLI mode and selecting them interactively
-3. If neither is specified, all analysts will be used
+# Via command line
+poetry run python src/main.py --autonomous --interval 60
+```
+
+Autonomous mode features:
+- Runs continuously until stopped (Ctrl+C)
+- Only trades during market hours (9:30 AM - 4:00 PM ET)
+- Configurable trading interval
+- Automatic market hours detection
+- Error recovery and retry mechanisms
+
+Configuration (via .env):
+```bash
+# Autonomous Mode Settings
+AUTONOMOUS_MODE=false
+TRADING_INTERVAL=60
+MARKET_HOURS_ONLY=true
+TRADING_TIMEZONE=America/New_York
+MIN_TRADING_INTERVAL=5
+MAX_TRADING_INTERVAL=240
+
+# Safety Limits
+MAX_POSITION_SIZE=25000
+MAX_PORTFOLIO_VALUE=1000000
+RETRY_ATTEMPTS=3
+RETRY_DELAY=5
+```
+
+**Note**: When running in autonomous mode, ensure you have:
+1. Sufficient API credits/quotas
+2. Stable internet connection
+3. Proper error handling in place
+4. Monitoring system for alerts
 
 ### Running the Backtester
 
