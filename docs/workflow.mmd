@@ -1,0 +1,40 @@
+graph TB
+    %% Nodes
+    Start[Start]
+    subgraph Analysts
+        TA[Technical Analyst]
+        FA[Fundamentals Analyst]
+        SA[Sentiment Analyst]
+        VA[Valuation Analyst]
+    end
+    RM[Risk Management]
+    PM[Portfolio Management]
+    TE[Trading Executor]
+    End[End]
+
+    %% Flow
+    Start --> TA
+    Start --> FA
+    Start --> SA
+    Start --> VA
+
+    %% Analyst Outputs
+    TA --> RM
+    FA --> RM
+    SA --> RM
+    VA --> RM
+
+    %% Sequential Flow
+    RM --> PM
+    PM --> TE
+    TE --> End
+
+    %% Styling
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px;
+    classDef analysts fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef process fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    classDef endpoint fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+
+    class TA,FA,SA,VA analysts;
+    class RM,PM,TE process;
+    class Start,End endpoint;

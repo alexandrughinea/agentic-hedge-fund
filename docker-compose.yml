@@ -1,0 +1,8 @@
+services:
+  hedge-fund:
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    command: --ticker AAPL,MSFT,NVDA  # Default tickers, can be overridden via command line
