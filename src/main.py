@@ -11,6 +11,7 @@ from dateutil.relativedelta import relativedelta
 import argparse
 from tabulate import tabulate
 import logging
+import json
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -32,6 +33,68 @@ load_dotenv()
 
 init(autoreset=True)
 
+def start(state: AgentState):
+    """Initialize the workflow with the input message."""
+    return state
+
+def create_workflow(selected_analysts=None):
+    """Create the workflow with selected analysts."""
+    workflow = StateGraph(AgentState)
+
+    # Add start node
+    workflow.add_node("start", start)
+
+    # Default to all analysts if none selected
+    if selected_analysts is None:
+        selected_analysts = ["technical_analyst", "fundamentals_analyst", "sentiment_analyst", "valuation_analyst"]
+
+    # Add selected analysts
+    for analyst in selected_analysts:
+        if analyst == "technical_analyst":
+            workflow.add_node("technical_analyst", technical_analyst_agent)
+        elif analyst == "fundamentals_analyst":
+            workflow.add_node("fundamentals_analyst", fundamentals_agent)
+        elif analyst == "sentiment_analyst":
+            workflow.add_node("sentiment_analyst", sentiment_agent)
+        elif analyst == "valuation_analyst":
+            workflow.add_node("valuation_analyst", valuation_agent)
+
+    # Add risk management and portfolio management
+    workflow.add_node("risk_management", risk_management_agent)
+    workflow.add_node("portfolio_management", portfolio_management_agent)
+
+    # Connect start to all analysts
+    for analyst in selected_analysts:
+        workflow.add_edge("start", analyst)
+
+    # Connect analysts to risk management
+    for analyst in selected_analysts:
+        workflow.add_edge(analyst, "risk_management")
+
+    # Connect risk management to portfolio management
+    workflow.add_edge("risk_management", "portfolio_management")
+    workflow.add_edge("portfolio_management", END)
+
+    # Set the entry point
+    workflow.set_entry_point("start")
+
+    return workflow
+
+# Create default workflow
+default_workflow = create_workflow()
+app = default_workflow.compile()
+
+def get_analysts():
+    """Get all available analyst agents"""
+    return [
+        fundamentals_agent,
+        technical_analyst_agent,
+        sentiment_agent,
+        valuation_agent,
+        risk_management_agent,
+        portfolio_management_agent
+    ]
+
 ##### Run the Hedge Fund #####
 def run_hedge_fund(
     tickers: list[str],
@@ -40,117 +103,90 @@ def run_hedge_fund(
     portfolio: dict,
     show_reasoning: bool = False,
     selected_analysts: list = None,
+    agent: object = None,
 ):
+    """Run the hedge fund with the given parameters"""
     try:
-        # Create a new workflow if analysts are customized
-        if selected_analysts is not None:
-            workflow = create_workflow(selected_analysts)
-            agent = workflow.compile()
-        else:
-            agent = app
-
-        final_state = agent.invoke(
-            {
-                "messages": [
-                    HumanMessage(
-                        content="Make trading decisions based on the provided data.",
-                    )
-                ],
-                "data": {
-                    "tickers": tickers,
-                    "portfolio": portfolio,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "analyst_signals": {},
-                },
-                "metadata": {
-                    "show_reasoning": show_reasoning,
-                },
+        progress.start()
+        
+        # Initialize the trading executor
+        executor = TradingExecutor(paper=True)
+        
+        # Create initial state
+        initial_state = {
+            "messages": [
+                HumanMessage(content="Starting new trading cycle")
+            ],
+            "data": {
+                "tickers": tickers,
+                "portfolio": portfolio,
+                "start_date": start_date,
+                "end_date": end_date,
+                "analyst_signals": {}
             },
-        )
+            "metadata": {
+                "show_reasoning": show_reasoning
+            }
+        }
+
+        # Run the workflow
+        if agent is None:
+            agent = app
+            
+        final_state = agent.invoke(initial_state)
+        
+        # Execute trades
+        final_state = executor.execute_portfolio_decisions(final_state)
 
         return {
             "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
             "analyst_signals": final_state["data"]["analyst_signals"],
+            "execution_results": final_state["data"].get("execution_results", {})
         }
     except Exception as e:
         logger.error(f"Failed to run hedge fund: {e}")
         return {
             "decisions": None,
             "analyst_signals": None,
-            "status": "error",
+            "execution_results": None,
             "error": str(e)
         }
     finally:
-        # Stop progress tracking
         progress.stop()
 
-
-def start(state: AgentState):
-    """Initialize the workflow with the input message."""
-    return state
-
-
-def create_workflow(selected_analysts=None):
-    """Create the workflow with selected analysts."""
-    workflow = StateGraph(AgentState)
-    workflow.add_node("start_node", start)
-
-    # Default to all analysts if none selected
-    if selected_analysts is None:
-        selected_analysts = ["technical_analyst", "fundamentals_analyst", "sentiment_analyst", "valuation_analyst"]
-
-    # Dictionary of all available analysts
-    analyst_nodes = {
-        "technical_analyst": ("technical_analyst_agent", technical_analyst_agent),
-        "fundamentals_analyst": ("fundamentals_agent", fundamentals_agent),
-        "sentiment_analyst": ("sentiment_agent", sentiment_agent),
-        "valuation_analyst": ("valuation_agent", valuation_agent),
-    }
-
-    # Add selected analyst nodes
-    for analyst_key in selected_analysts:
-        node_name, node_func = analyst_nodes[analyst_key]
-        workflow.add_node(node_name, node_func)
-        workflow.add_edge("start_node", node_name)
-
-    # Always add risk and portfolio management
-    workflow.add_node("risk_management_agent", risk_management_agent)
-    workflow.add_node("portfolio_management_agent", portfolio_management_agent)
-
-    # Add trading executor
-    trading_executor = TradingExecutor(paper=True)
-    workflow.add_node("trading_executor", trading_executor.execute_portfolio_decisions)
-
-    # Connect selected analysts to risk management
-    for analyst_key in selected_analysts:
-        node_name = analyst_nodes[analyst_key][0]
-        workflow.add_edge(node_name, "risk_management_agent")
-
-    workflow.add_edge("risk_management_agent", "portfolio_management_agent")
-    workflow.add_edge("portfolio_management_agent", "trading_executor")
-    workflow.add_edge("trading_executor", END)
-
-    workflow.set_entry_point("start_node")
-    return workflow
-
-
 def parse_hedge_fund_response(response):
-    import json
-
+    """Parse the portfolio manager's response into a decisions dictionary."""
     try:
-        return json.loads(response)
-    except:
-        print(f"Error parsing response: {response}")
+        if isinstance(response, str):
+            decisions = json.loads(response)
+        else:
+            decisions = response
+            
+        # Ensure each decision has the required fields
+        parsed_decisions = {}
+        for ticker, decision in decisions.items():
+            parsed_decisions[ticker] = {
+                "action": decision.get("action", "HOLD"),
+                "quantity": decision.get("quantity", 0),
+                "confidence": decision.get("confidence", 0.0),
+                "reasoning": decision.get("reasoning", "No reasoning provided")
+            }
+        return parsed_decisions
+    except Exception as e:
+        logger.error(f"Error parsing portfolio manager response: {e}")
+        logger.error(f"Raw response: {response}")
         return None
 
 
 def run_trading_cycle(tickers: list, selected_analysts: list = None):
     """Run a single trading cycle"""
     try:
-        # Create the workflow with selected analysts
-        workflow = create_workflow(selected_analysts)
-        app = workflow.compile()
+        # Create the workflow with selected analysts if specified, otherwise use default
+        if selected_analysts is not None:
+            workflow = create_workflow(selected_analysts)
+            agent = workflow.compile()
+        else:
+            agent = app
 
         # Set dates
         end_date = os.getenv("END_DATE") or datetime.now().strftime("%Y-%m-%d")
@@ -174,16 +210,17 @@ def run_trading_cycle(tickers: list, selected_analysts: list = None):
             portfolio=portfolio,
             show_reasoning=os.getenv("SHOW_REASONING", "").lower() == "true",
             selected_analysts=selected_analysts,
+            agent=agent
         )
         
         if result.get("status") == "error":
             logger.error(f"Trading cycle failed: {result.get('error')}")
-            return False
+            return {"decisions": None, "analyst_signals": None, "error": result.get('error')}
             
-        return True
+        return result
     except Exception as e:
         logger.error(f"Trading cycle error: {e}")
-        return False
+        return {"decisions": None, "analyst_signals": None, "error": str(e)}
     finally:
         # Ensure we clean up any remaining connections
         try:
@@ -241,35 +278,82 @@ def main():
             scheduler.stop()
     else:
         # Interactive mode
-        if len(sys.argv) > 1:  # CLI mode
-            # Show analyst selection if not configured
-            env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
-            if not env_analysts:
-                choices = questionary.checkbox(
-                    "Select your AI analysts.",
-                    choices=[questionary.Choice(display, value=value) for display, value in ANALYST_ORDER],
-                    instruction="\n\nInstructions: \n1. Press Space to select/unselect analysts.\n2. Press 'a' to select/unselect all.\n3. Press Enter when done to run the hedge fund.\n",
-                    validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
-                    style=questionary.Style([
-                        ("checkbox-selected", "fg:green"),
-                        ("selected", "fg:green noinherit"),
-                        ("highlighted", "noinherit"),
-                        ("pointer", "noinherit"),
-                    ]),
-                ).ask()
-                
-                if choices:
-                    selected_analysts = choices
-                    print(f"\nSelected analysts: {', '.join(Fore.GREEN + choice.title().replace('_', ' ') + Style.RESET_ALL for choice in choices)}\n")
-                else:
-                    selected_analysts = None
-            else:
-                selected_analysts = None
-        else:
-            selected_analysts = None
+        try:
+            # Run a single trading cycle
+            print(f"\nStarting trading cycle for: {', '.join(tickers)}")
+            
+            # Select analysts
+            print("\nSelect analysts to use:")
+            analysts = get_analysts()
+            choices = [
+                {"name": "Technical Analyst", "value": "technical_analyst"},
+                {"name": "Fundamentals Analyst", "value": "fundamentals_analyst"},
+                {"name": "Sentiment Analyst", "value": "sentiment_analyst"},
+                {"name": "Valuation Analyst", "value": "valuation_analyst"}
+            ]
+            selected = questionary.checkbox(
+                "Choose analysts:",
+                choices=choices
+            ).ask()
+            
+            if not selected:
+                print("No analysts selected. Using all analysts.")
+                selected = None
 
-        result = run_trading_cycle(tickers, selected_analysts)
-        print_trading_output(result)
+            # Run the trading cycle
+            result = run_trading_cycle(tickers, selected)
+            
+            if result.get("error"):
+                print(f"\n{Fore.RED}Trading cycle failed: {result['error']}{Style.RESET_ALL}")
+                return
+
+            # Print results
+            print("\nTrading Results:")
+            print("----------------")
+            
+            # Print analyst signals
+            if result.get("analyst_signals"):
+                print("\nAnalyst Signals:")
+                for analyst, signals in result["analyst_signals"].items():
+                    print(f"\n{analyst}:")
+                    for ticker, signal in signals.items():
+                        if "error" in signal:
+                            print(f"  {ticker}: {Fore.RED}Error: {signal['error']}{Style.RESET_ALL}")
+                        else:
+                            print(f"  {ticker}: {signal}")
+
+            # Print decisions
+            if result.get("decisions"):
+                print("\nTrading Decisions:")
+                decisions_table = []
+                for ticker, decision in result["decisions"].items():
+                    decisions_table.append([
+                        ticker,
+                        decision.get("action", "HOLD").upper(),
+                        decision.get("quantity", 0),
+                        f"{decision.get('confidence', 0):.1f}%",
+                        decision.get("reasoning", "No reasoning provided")
+                    ])
+                print(tabulate(decisions_table, headers=["Ticker", "Action", "Quantity", "Confidence", "Reasoning"]))
+
+            # Print execution results
+            if result.get("execution_results"):
+                print("\nExecution Results:")
+                execution_table = []
+                for ticker, execution in result["execution_results"].items():
+                    if execution["status"] == "success":
+                        status = f"{Fore.GREEN}✓{Style.RESET_ALL}"
+                        details = f"{execution['action'].upper()} {execution['quantity']} shares"
+                    else:
+                        status = f"{Fore.RED}✗{Style.RESET_ALL}"
+                        details = f"Error: {execution.get('error', 'Unknown error')}"
+                    execution_table.append([ticker, status, details])
+                print(tabulate(execution_table, headers=["Ticker", "Status", "Details"]))
+
+        except KeyboardInterrupt:
+            print("\nTrading cycle interrupted.")
+        except Exception as e:
+            print(f"\n{Fore.RED}Error: {str(e)}{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()
