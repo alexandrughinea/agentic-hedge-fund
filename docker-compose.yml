@@ -1,8 +1,11 @@
+version: '3.8'
+
 services:
   hedge-fund:
     build: .
     volumes:
       - .:/app
-    env_file:
-      - .env
-    command: --ticker AAPL,MSFT,NVDA  # Default tickers, can be overridden via command line
+      - ./logs:/var/log
+    env_file: .env
+    command: supervisord -c /app/supervisord.conf
+    restart: unless-stopped
