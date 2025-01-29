@@ -10,6 +10,10 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import argparse
 from tabulate import tabulate
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 from agents.fundamentals import fundamentals_agent
 from agents.portfolio_manager import portfolio_management_agent
@@ -37,9 +41,6 @@ def run_hedge_fund(
     show_reasoning: bool = False,
     selected_analysts: list = None,
 ):
-    # Start progress tracking
-    progress.start()
-
     try:
         # Create a new workflow if analysts are customized
         if selected_analysts is not None:
@@ -71,6 +72,14 @@ def run_hedge_fund(
         return {
             "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
             "analyst_signals": final_state["data"]["analyst_signals"],
+        }
+    except Exception as e:
+        logger.error(f"Failed to run hedge fund: {e}")
+        return {
+            "decisions": None,
+            "analyst_signals": None,
+            "status": "error",
+            "error": str(e)
         }
     finally:
         # Stop progress tracking
@@ -138,44 +147,51 @@ def parse_hedge_fund_response(response):
 
 def run_trading_cycle(tickers: list, selected_analysts: list = None):
     """Run a single trading cycle"""
-    if selected_analysts is None:
-        # Get analysts from environment variable
-        env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
-        selected_analysts = [a.strip() for a in env_analysts.split(",")] if env_analysts else []
+    try:
+        # Create the workflow with selected analysts
+        workflow = create_workflow(selected_analysts)
+        app = workflow.compile()
+
+        # Set dates
+        end_date = os.getenv("END_DATE") or datetime.now().strftime("%Y-%m-%d")
+        if not os.getenv("START_DATE"):
+            # Calculate 3 months before end_date
+            end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            start_date = (end_date_obj - relativedelta(months=3)).strftime("%Y-%m-%d")
+        else:
+            start_date = os.getenv("START_DATE")
+
+        # Initialize portfolio
+        portfolio = {
+            "cash": float(os.getenv("INITIAL_CASH", "100000.0")),
+            "positions": {ticker: 0 for ticker in tickers}
+        }
+
+        result = run_hedge_fund(
+            tickers=tickers,
+            start_date=start_date,
+            end_date=end_date,
+            portfolio=portfolio,
+            show_reasoning=os.getenv("SHOW_REASONING", "").lower() == "true",
+            selected_analysts=selected_analysts,
+        )
         
-        # If no analysts configured, use all
-        if not selected_analysts:
-            selected_analysts = [value for _, value in ANALYST_ORDER]
-
-    # Create the workflow with selected analysts
-    workflow = create_workflow(selected_analysts)
-    app = workflow.compile()
-
-    # Set dates
-    end_date = os.getenv("END_DATE") or datetime.now().strftime("%Y-%m-%d")
-    if not os.getenv("START_DATE"):
-        # Calculate 3 months before end_date
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        start_date = (end_date_obj - relativedelta(months=3)).strftime("%Y-%m-%d")
-    else:
-        start_date = os.getenv("START_DATE")
-
-    # Initialize portfolio
-    portfolio = {
-        "cash": float(os.getenv("INITIAL_CASH", "100000.0")),
-        "positions": {ticker: 0 for ticker in tickers}
-    }
-
-    # Run the hedge fund
-    result = run_hedge_fund(
-        tickers=tickers,
-        start_date=start_date,
-        end_date=end_date,
-        portfolio=portfolio,
-        show_reasoning=os.getenv("SHOW_REASONING", "").lower() == "true",
-        selected_analysts=selected_analysts,
-    )
-    return result
+        if result.get("status") == "error":
+            logger.error(f"Trading cycle failed: {result.get('error')}")
+            return False
+            
+        return True
+    except Exception as e:
+        logger.error(f"Trading cycle error: {e}")
+        return False
+    finally:
+        # Ensure we clean up any remaining connections
+        try:
+            for analyst in get_analysts():
+                if hasattr(analyst, 'cleanup'):
+                    analyst.cleanup()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
 
 def main():

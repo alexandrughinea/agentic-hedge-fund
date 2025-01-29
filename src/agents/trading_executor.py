@@ -105,6 +105,28 @@ class TradingExecutor:
                 self.disconnect()
             except Exception as e:
                 logger.error(f"Error disconnecting from broker: {str(e)}")
+                return {
+                    "portfolio": self.portfolio,
+                    "orders": self.orders,
+                    "cash": self.cash,
+                    "status": "error",
+                    "error": str(e)
+                }
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up resources when exiting."""
+        try:
+            self.broker.close()
+        except Exception as e:
+            logger.error(f"Error closing Alpaca connection: {e}")
+        finally:
+            # Ensure we return a valid state update even on error
+            return {
+                "portfolio": self.portfolio,
+                "orders": self.orders,
+                "cash": self.cash,
+                "status": "completed"
+            }
 
     def _update_portfolio_state(self, state: AgentState):
         """Update the portfolio state with current positions and cash"""
