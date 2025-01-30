@@ -39,51 +39,59 @@ class TradingExecutor:
             logger.error(f"Failed to disconnect from broker: {str(e)}")
             raise ValueError(f"Failed to disconnect from broker: {str(e)}")
     
-    def execute_portfolio_decisions(self, state: AgentState) -> Dict:
+    def execute_portfolio_decisions(self, state: AgentState) -> AgentState:
         """Execute the portfolio management decisions"""
-        execution_results = {}
-        
         try:
-            # Wait for portfolio management to complete by checking messages
-            import time
-            max_wait = 30  # Maximum wait time in seconds
-            start_time = time.time()
-            
-            while time.time() - start_time < max_wait:
-                if portfolio_decisions := state.get("portfolio_decisions"):
-                    break
-                time.sleep(0.1)
-                
+            # Get the latest message which should contain the decisions
+            if not state["messages"]:
+                progress.update_status("trading_executor", "", "No messages found")
+                return state
+
+            last_message = state["messages"][-1]
+            try:
+                portfolio_decisions = json.loads(last_message.content)
+            except json.JSONDecodeError:
+                progress.update_status("trading_executor", "", "Invalid portfolio decisions format")
+                return state
+
             if not portfolio_decisions:
-                progress.update_status("trading_executor", "", "Timeout waiting for Portfolio Management")
-                return {"error": "Timeout waiting for Portfolio Management"}
+                progress.update_status("trading_executor", "", "No portfolio decisions found")
+                return state
 
             # Connect to broker if not already connected
             if not self.connected:
                 self.connect()
 
             # Execute each decision
+            execution_results = {}
             for ticker, decision in portfolio_decisions.items():
                 try:
-                    progress.update_status("trading_executor", ticker, f"Executing {decision['action']} order")
+                    action = decision.get("action", "").lower()
+                    quantity = decision.get("quantity", 0)
+                    
+                    if action not in ["buy", "sell"] or quantity <= 0:
+                        progress.update_status("trading_executor", ticker, f"✓ HOLD (no action needed)")
+                        continue
+
+                    progress.update_status("trading_executor", ticker, f"Executing {action.upper()} order")
                     
                     # Create and execute order
                     order = Order(
                         symbol=ticker,
-                        quantity=decision["quantity"],
-                        side=OrderSide.BUY if decision["action"] == "buy" else OrderSide.SELL,
+                        quantity=quantity,
+                        side=OrderSide.BUY if action == "buy" else OrderSide.SELL,
                         type=OrderType.MARKET
                     )
                     
                     result = self.broker.place_order(order)
                     execution_results[ticker] = {
                         "status": "success",
-                        "action": decision["action"],
-                        "quantity": decision["quantity"],
+                        "action": action,
+                        "quantity": quantity,
                         "order_id": result.get("id", "unknown")
                     }
                     
-                    progress.update_status("trading_executor", ticker, "✓ Order executed successfully")
+                    progress.update_status("trading_executor", ticker, f"✓ {action.upper()} {quantity} shares")
                     
                 except Exception as e:
                     logger.error(f"Error executing order for {ticker}: {str(e)}")
@@ -91,21 +99,32 @@ class TradingExecutor:
                         "status": "error",
                         "error": str(e)
                     }
-                    progress.update_status("trading_executor", ticker, f"❌ Order execution failed: {str(e)}")
+                    progress.update_status("trading_executor", ticker, f"Error: {str(e)}")
 
-            return execution_results
+            # Update the portfolio state
+            self._update_portfolio_state(state)
             
-        except Exception as e:
-            error_msg = f"❌ Error executing trades: {str(e)}"
-            progress.update_status("trading_executor", "", error_msg)
-            return {"error": error_msg}
-        
-        finally:
-            try:
-                self.disconnect()
-            except Exception as e:
-                logger.error(f"Error disconnecting from broker: {str(e)}")
+            # Add execution results to state
+            state["data"]["execution_results"] = execution_results
+            
+            # Show final status with action summary
+            action_summary = []
+            for ticker, result in execution_results.items():
+                if result["status"] == "success":
+                    action_summary.append(f"{ticker}: {result['action'].upper()} {result['quantity']}")
+            
+            if action_summary:
+                progress.update_status("trading_executor", "", f"Done - {', '.join(action_summary)}")
+            else:
+                progress.update_status("trading_executor", "", "Done - No trades executed")
+            
+            return state
 
+        except Exception as e:
+            logger.error(f"Trading execution error: {str(e)}")
+            progress.update_status("trading_executor", "", f"Error: {str(e)}")
+            return state
+    
     def _update_portfolio_state(self, state: AgentState):
         """Update the portfolio state with current positions and cash"""
         try:
@@ -132,3 +151,18 @@ class TradingExecutor:
             
         except Exception as e:
             logger.error(f"Error updating portfolio state: {str(e)}")
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up resources when exiting."""
+        try:
+            self.broker.close()
+        except Exception as e:
+            logger.error(f"Error closing Alpaca connection: {e}")
+        finally:
+            # Ensure we return a valid state update even on error
+            return {
+                "portfolio": self.portfolio,
+                "orders": self.orders,
+                "cash": self.cash,
+                "status": "completed"
+            }

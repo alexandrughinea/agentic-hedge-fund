@@ -78,12 +78,21 @@ def print_trading_output(result: Dict[str, Any]) -> None:
 
         decision_data = [
             ["Action", f"{action_color}{action}{Style.RESET_ALL}"],
-            ["Quantity", f"{action_color}{decision.get('quantity')}{Style.RESET_ALL}"],
-            [
-                "Confidence",
-                f"{Fore.YELLOW}{decision.get('confidence'):.1f}%{Style.RESET_ALL}",
-            ],
+            ["Quantity", f"{action_color}{decision.get('quantity', 'N/A')}{Style.RESET_ALL}"],
         ]
+
+        # Add confidence if available and valid
+        confidence = decision.get('confidence')
+        if confidence is not None and isinstance(confidence, (int, float)):
+            decision_data.append([
+                "Confidence",
+                f"{Fore.YELLOW}{confidence:.1f}%{Style.RESET_ALL}",
+            ])
+        else:
+            decision_data.append([
+                "Confidence",
+                f"{Fore.YELLOW}N/A{Style.RESET_ALL}",
+            ])
 
         console.print(f"\n{Fore.WHITE}{Style.BRIGHT}TRADING DECISION:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
         console.print(tabulate(decision_data, tablefmt="grid", colalign=("left", "right")))

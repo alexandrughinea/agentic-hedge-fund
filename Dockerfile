@@ -9,11 +9,12 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_DEFAULT_TIMEOUT=100 \
     POETRY_VERSION=1.7.1
 
-# Install system dependencies
+# Install system dependencies including supervisord
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         build-essential \
+        supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install poetry
@@ -35,5 +36,11 @@ COPY . .
 # Install project
 RUN poetry install --no-interaction --no-ansi
 
+# Create log directory
+RUN mkdir -p /var/log
+
+# Copy supervisord config
+COPY supervisord.conf /etc/supervisor/conf.d/
+
 # Set entrypoint
-ENTRYPOINT ["poetry", "run", "python", "src/main.py"]
+ENTRYPOINT ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
