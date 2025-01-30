@@ -117,34 +117,29 @@ poetry run python src/main.py --show-reasoning
 ## Example Output
 
 ```
-Analysis for AAPL
-=================
-
-ANALYST SIGNALS:
-┌─────────────────┬──────────┬────────────┐
-│ Analyst         │  Signal  │ Confidence │
-├─────────────────┼──────────┼────────────┤
-│ Technical       │ BULLISH  │      85.5% │
-│ Fundamentals    │ BULLISH  │      92.0% │
-│ Sentiment       │ NEUTRAL  │      60.0% │
-│ Valuation       │ BULLISH  │      78.5% │
-└─────────────────┴──────────┴────────────┘
-
-TRADING DECISION:
-┌────────────┬──────────┐
-│ Action     │      BUY │
-│ Quantity   │      100 │
-│ Confidence │    85.5% │
-└────────────┴──────────┘
+ANALYST SIGNALS
+┌────────┬─────────────────┬──────────┬────────────┐
+│ Ticker │ Analyst         │  Signal  │ Confidence │
+├────────┼─────────────────┼──────────┼────────────┤
+│ AAPL   │ Technical       │ BULLISH  │      85.5% │
+│ AAPL   │ Fundamentals    │ BULLISH  │      92.0% │
+│ AAPL   │ Sentiment       │ NEUTRAL  │      60.0% │
+│ AAPL   │ Valuation       │ BULLISH  │      78.5% │
+│ MSFT   │ Technical       │ NEUTRAL  │      55.0% │
+│ MSFT   │ Fundamentals    │ BULLISH  │      88.0% │
+│ MSFT   │ Sentiment       │ BULLISH  │      75.0% │
+│ MSFT   │ Valuation       │ NEUTRAL  │      65.0% │
+└────────┴─────────────────┴──────────┴────────────┘
 
 PORTFOLIO SUMMARY
-┌────────┬────────┬──────────┬────────────┐
-│ Ticker │ Action │ Quantity │ Confidence │
-├────────┼────────┼──────────┼────────────┤
-│ AAPL   │ BUY    │     100  │     85.5%  │
-│ MSFT   │ HOLD   │       0  │     65.0%  │
-│ GOOGL  │ SELL   │      50  │     78.5%  │
-└────────┴────────┴──────────┴────────────┘
+┌────────┬────────┬──────────┬────────────┬────────────────┬───────────────┬───────────────┐
+│ Ticker │ Action │ Quantity │ Confidence │ Position Value │ Position Limit│ Available Cash │
+├────────┼────────┼──────────┼────────────┼────────────────┼───────────────┼───────────────┤
+│ AAPL   │ BUY    │     100  │     85.5%  │     $18,500.00│    $20,000.00 │   $100,000.00 │
+│ MSFT   │ HOLD   │       0  │     65.0%  │          $0.00│    $20,000.00 │    $81,500.00 │
+├────────┼────────┼──────────┼────────────┼────────────────┼───────────────┼───────────────┤
+│ TOTAL  │        │          │            │     $18,500.00 │               │    $81,500.00 │
+└────────┴────────┴──────────┴────────────┴────────────────┴───────────────┴───────────────┘
 ```
 
 ## Autonomous Mode
@@ -316,4 +311,3 @@ poetry run flake8
 
 # Format code
 poetry run black .
-```

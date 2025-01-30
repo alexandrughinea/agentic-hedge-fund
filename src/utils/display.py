@@ -3,7 +3,8 @@ from .analysts import ANALYST_ORDER
 import os
 from rich.console import Console
 from rich.table import Table
-from typing import Any, Dict
+from typing import Any, Dict, List, Tuple
+from utils.analysts import get_agent_display_name
 
 console = Console()
 
@@ -17,6 +18,14 @@ def sort_analyst_signals(signals):
     return sorted(signals, key=lambda x: analyst_order.get(x[0].lower().replace(" ", "_"), 999))
 
 
+def sort_signals(signals: List[Tuple[str, Any]]) -> List[Tuple[str, Any]]:
+    """Sort signals according to ANALYST_ORDER"""
+    analyst_order = {agent: idx for idx, agent in enumerate(ANALYST_ORDER)}
+    analyst_order["risk_management_agent"] = len(ANALYST_ORDER)  # Add Risk Management at the end
+
+    return sorted(signals, key=lambda x: analyst_order.get(x[0].lower().replace(" ", "_"), 999))
+
+
 def print_trading_output(result: Dict[str, Any]) -> None:
     """
     Print formatted trading results with colored tables for multiple tickers.
@@ -24,28 +33,27 @@ def print_trading_output(result: Dict[str, Any]) -> None:
     Args:
         result (dict): Dictionary containing decisions and analyst signals for multiple tickers
     """
-    decisions = result.get("decisions")
-    if not decisions:
-        console.print("[red]No trading decisions available[/]")
+    if not result or "decisions" not in result:
+        console.print("[red]No trading decisions found[/]")
         return
 
-    # Print decisions for each ticker
-    for ticker, decision in decisions.items():
-        console.print(f"\n[white bold]Analysis for [cyan]{ticker}[/]")
-        console.print("[white bold]" + "=" * 50 + "[/]")
+    decisions = result.get("decisions", {})
 
-        # Prepare analyst signals table for this ticker
-        signals_table = Table(title=f"[white bold]ANALYST SIGNALS: [cyan]{ticker}[/]")
-        signals_table.add_column("Analyst", style="cyan")
-        signals_table.add_column("Signal", justify="center")
-        signals_table.add_column("Confidence", justify="right", style="yellow")
+    # Create signals table for all tickers
+    signals_table = Table(title="[white bold]ANALYST SIGNALS")
+    signals_table.add_column("Ticker", style="cyan")
+    signals_table.add_column("Analyst", style="white")
+    signals_table.add_column("Signal", justify="center")
+    signals_table.add_column("Confidence", justify="right", style="yellow")
 
-        for agent, signals in result.get("analyst_signals", {}).items():
-            if ticker not in signals:
+    # Add signals for all tickers
+    for ticker in decisions.keys():
+        signals = result.get("analyst_signals", {})
+        for agent, agent_signals in signals.items():
+            if ticker not in agent_signals:
                 continue
-
-            signal = signals[ticker]
-            agent_name = agent.replace("_agent", "").replace("_", " ").title()
+            signal = agent_signals[ticker]
+            agent_name = get_agent_display_name(agent)
             signal_type = signal.get("signal", "").upper()
 
             signal_style = {
@@ -54,48 +62,42 @@ def print_trading_output(result: Dict[str, Any]) -> None:
                 "NEUTRAL": "yellow",
             }.get(signal_type, "white")
 
-            signals_table.add_row(agent_name, f"[{signal_style}]{signal_type}[/]", f"{signal.get('confidence')}%")
+            signals_table.add_row(ticker, agent_name, f"[{signal_style}]{signal_type}[/]", f"{signal.get('confidence', 0)}%")
 
-        # Sort and display signals
-        console.print(signals_table)
+    console.print(signals_table)
+    console.print()
 
-        # Print Trading Decision Table
-        decision_table = Table(title=f"[white bold]TRADING DECISION: [cyan]{ticker}[/]")
-        decision_table.add_column("Metric", style="white")
-        decision_table.add_column("Value", justify="right")
-
-        action = decision.get("action", "").upper()
-        action_style = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}.get(action, "white")
-
-        decision_table.add_row("Action", f"[{action_style}]{action}[/]")
-        decision_table.add_row("Quantity", f"[{action_style}]{decision.get('quantity', 'N/A')}[/]")
-
-        # Add confidence if available and valid
-        confidence = decision.get("confidence")
-        if confidence is not None and isinstance(confidence, (int, float)):
-            decision_table.add_row("Confidence", f"{confidence:.1f}%")
-        else:
-            decision_table.add_row("Confidence", "N/A")
-
-        console.print(decision_table)
-
-        # Print Reasoning
-        console.print(f"\n[white bold]Reasoning:[/] [cyan]{decision.get('reasoning')}[/]")
-
-    # Print Portfolio Summary
-    portfolio_table = Table(title="[white bold]PORTFOLIO SUMMARY[/]")
+    # Create portfolio summary table
+    portfolio_table = Table(title="[white bold]PORTFOLIO SUMMARY")
     portfolio_table.add_column("Ticker", style="cyan")
     portfolio_table.add_column("Action", justify="center")
     portfolio_table.add_column("Quantity", justify="right")
-    portfolio_table.add_column("Confidence", justify="right", style="yellow")
+    portfolio_table.add_column("Confidence", justify="right")
+    portfolio_table.add_column("Position Value", justify="right")
+    portfolio_table.add_column("Position Limit", justify="right")
+    portfolio_table.add_column("Available Cash", justify="right")
 
+    # Add portfolio metrics for each ticker
     for ticker, decision in decisions.items():
         action = decision.get("action", "").upper()
         action_style = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}.get(action, "white")
 
-        portfolio_table.add_row(ticker, f"[{action_style}]{action}[/]", f"[{action_style}]{decision.get('quantity')}[/]", f"{decision.get('confidence', 0):.1f}%")
+        # Get portfolio metrics from reasoning
+        reasoning = decision.get("reasoning", {})
+        position_value = reasoning.get("current_position", 0)
+        position_limit = reasoning.get("position_limit", 0)
+        available_cash = reasoning.get("available_cash", 0)
 
-    console.print("\n", portfolio_table)
+        portfolio_table.add_row(ticker, f"[{action_style}]{action}[/]", f"[{action_style}]{decision.get('quantity', 0)}[/]", f"{decision.get('confidence', 0):.1f}%", f"${position_value:,.2f}", f"${position_limit:,.2f}", f"${available_cash:,.2f}")
+
+    # Add portfolio totals
+    if decisions:
+        first_decision = next(iter(decisions.values()))
+        if isinstance(first_decision.get("reasoning"), dict):
+            reasoning = first_decision["reasoning"]
+            portfolio_table.add_row("[bold]TOTAL[/]", "", "", "", f"${reasoning.get('portfolio_value', 0):,.2f}", "", f"${reasoning.get('available_cash', 0):,.2f}", style="bold")
+
+    console.print(portfolio_table)
 
 
 def print_backtest_results(table_rows: list) -> None:
