@@ -12,7 +12,6 @@ from tools.api import get_prices, prices_to_df
 from utils.progress import progress
 
 
-##### Technical Analyst #####
 def technical_analyst_agent(state: AgentState):
     """
     Sophisticated technical analysis system that combines multiple trading strategies for multiple tickers:

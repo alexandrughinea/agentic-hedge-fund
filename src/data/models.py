@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class Price(BaseModel):
-    model_config = ConfigDict(extra='allow')  # Allow extra fields
+    model_config = ConfigDict(extra="allow")  # Allow extra fields
     open: float
     close: float
     high: float
@@ -13,7 +13,7 @@ class Price(BaseModel):
 
 
 class PriceResponse(BaseModel):
-    model_config = ConfigDict(extra='allow')  # Allow extra fields
+    model_config = ConfigDict(extra="allow")  # Allow extra fields
     prices: list[Price]  # API returns prices array
     ticker: str
 

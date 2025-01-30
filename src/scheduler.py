@@ -15,22 +15,23 @@ from utils.progress import progress
 
 logger = logging.getLogger(__name__)
 
+
 class TradingScheduler:
     """Manages scheduled trading operations."""
-    
+
     def __init__(self, tickers: list, trading_hours_only: bool = True, timezone: str = "America/New_York"):
         self.tickers = tickers
         self.trading_hours_only = trading_hours_only
         self.timezone = pytz.timezone(timezone)
         self.scheduler = BackgroundScheduler(timezone=self.timezone)
         self.scheduler.add_listener(self._handle_job_event, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
-        
+
         # Load safety limits from environment
-        self.max_position_size = float(os.getenv('MAX_POSITION_SIZE', '25000'))
-        self.max_portfolio_value = float(os.getenv('MAX_PORTFOLIO_VALUE', '1000000'))
-        self.retry_attempts = int(os.getenv('RETRY_ATTEMPTS', '3'))
-        self.retry_delay = int(os.getenv('RETRY_DELAY', '5'))
-        
+        self.max_position_size = float(os.getenv("MAX_POSITION_SIZE", "25000"))
+        self.max_portfolio_value = float(os.getenv("MAX_PORTFOLIO_VALUE", "1000000"))
+        self.retry_attempts = int(os.getenv("RETRY_ATTEMPTS", "3"))
+        self.retry_delay = int(os.getenv("RETRY_DELAY", "5"))
+
     def _handle_job_event(self, event):
         """Handle scheduler job events."""
         if event.exception:
@@ -39,14 +40,14 @@ class TradingScheduler:
         else:
             logger.info("Trading cycle completed successfully")
             progress.update_status("scheduler", "", "Trading cycle completed successfully")
-            
+
     def _can_trade_now(self) -> bool:
         """Check if trading is allowed at current time."""
         if not self.trading_hours_only:
             return True
-            
+
         return is_market_open()
-        
+
     def _execute_trading_cycle(self):
         """Execute one complete trading cycle."""
         if not self._can_trade_now():
@@ -54,7 +55,7 @@ class TradingScheduler:
             logger.info(f"Market is closed. Next trading window opens at {next_open}")
             progress.update_status("scheduler", "", f"Market closed. Next window: {next_open}")
             return
-            
+
         attempts = 0
         while attempts < self.retry_attempts:
             try:
@@ -72,36 +73,27 @@ class TradingScheduler:
                     logger.warning(f"Attempt {attempts} failed, retrying in {self.retry_delay}s: {str(e)}")
                     progress.update_status("scheduler", "", f"Retrying in {self.retry_delay}s...")
                     time.sleep(self.retry_delay)
-            
+
     def start(self, interval_minutes: int = 60):
         """Start the scheduler with specified interval."""
         # Validate interval
-        min_interval = int(os.getenv('MIN_TRADING_INTERVAL', '5'))
-        max_interval = int(os.getenv('MAX_TRADING_INTERVAL', '240'))
-        
+        min_interval = int(os.getenv("MIN_TRADING_INTERVAL", "5"))
+        max_interval = int(os.getenv("MAX_TRADING_INTERVAL", "240"))
+
         if not min_interval <= interval_minutes <= max_interval:
             raise ValueError(f"Trading interval must be between {min_interval} and {max_interval} minutes")
-        
+
         # Add trading job
-        self.scheduler.add_job(
-            self._execute_trading_cycle,
-            'interval',
-            minutes=interval_minutes,
-            id='trading_cycle'
-        )
-        
+        self.scheduler.add_job(self._execute_trading_cycle, "interval", minutes=interval_minutes, id="trading_cycle")
+
         # Add market hours check job (runs every morning)
         if self.trading_hours_only:
-            self.scheduler.add_job(
-                self._execute_trading_cycle,
-                CronTrigger(hour=9, minute=31, timezone=self.timezone),
-                id='market_open'
-            )
-            
+            self.scheduler.add_job(self._execute_trading_cycle, CronTrigger(hour=9, minute=31, timezone=self.timezone), id="market_open")
+
         self.scheduler.start()
         logger.info(f"Scheduler started. Trading every {interval_minutes} minutes")
         progress.update_status("scheduler", "", f"Started. Trading every {interval_minutes} min")
-        
+
     def stop(self):
         """Stop the scheduler."""
         self.scheduler.shutdown()

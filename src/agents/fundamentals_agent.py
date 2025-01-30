@@ -6,7 +6,6 @@ import json
 from tools.api import get_financial_metrics
 
 
-##### Fundamental Agent #####
 def fundamentals_agent(state: AgentState):
     """Analyzes fundamental data and generates trading signals for multiple tickers."""
     try:
@@ -31,20 +30,12 @@ def fundamentals_agent(state: AgentState):
                     )
                 except Exception as e:
                     progress.update_status("fundamentals_agent", ticker, f"\033[91mError: Failed to fetch metrics - {str(e)}\033[0m")
-                    fundamental_analysis[ticker] = {
-                        "signal": "neutral",
-                        "confidence": 0,
-                        "error": str(e)
-                    }
+                    fundamental_analysis[ticker] = {"signal": "neutral", "confidence": 0, "error": str(e)}
                     continue
 
                 if not financial_metrics:
                     progress.update_status("fundamentals_agent", ticker, f"\033[91mError: No financial metrics found\033[0m")
-                    fundamental_analysis[ticker] = {
-                        "signal": "neutral",
-                        "confidence": 0,
-                        "error": "No financial metrics found"
-                    }
+                    fundamental_analysis[ticker] = {"signal": "neutral", "confidence": 0, "error": "No financial metrics found"}
                     continue
 
                 # Pull the most recent financial metrics
@@ -104,7 +95,7 @@ def fundamentals_agent(state: AgentState):
                 # Calculate overall signal and confidence
                 bullish_signals = signals.count("bullish")
                 total_signals = len(signals)
-                
+
                 if bullish_signals > total_signals / 2:
                     signal = "bullish"
                     confidence = (bullish_signals / total_signals) * 100
@@ -112,21 +103,13 @@ def fundamentals_agent(state: AgentState):
                     signal = "bearish"
                     confidence = ((total_signals - bullish_signals) / total_signals) * 100
 
-                fundamental_analysis[ticker] = {
-                    "signal": signal,
-                    "confidence": confidence,
-                    "reasoning": reasoning
-                }
+                fundamental_analysis[ticker] = {"signal": signal, "confidence": confidence, "reasoning": reasoning}
 
                 progress.update_status("fundamentals_agent", ticker, "Done")
 
             except Exception as e:
                 progress.update_status("fundamentals_agent", ticker, f"\033[91mError: {str(e)}\033[0m")
-                fundamental_analysis[ticker] = {
-                    "signal": "neutral",
-                    "confidence": 0,
-                    "error": str(e)
-                }
+                fundamental_analysis[ticker] = {"signal": "neutral", "confidence": 0, "error": str(e)}
 
         # Create the fundamentals message
         message = HumanMessage(
@@ -140,19 +123,10 @@ def fundamentals_agent(state: AgentState):
 
         return {
             "messages": state["messages"] + [message],
-            "data": {
-                **state["data"],
-                "analyst_signals": {
-                    **state["data"].get("analyst_signals", {}),
-                    "fundamentals_agent": fundamental_analysis
-                }
-            },
+            "data": {**state["data"], "analyst_signals": {**state["data"].get("analyst_signals", {}), "fundamentals_agent": fundamental_analysis}},
         }
 
     except Exception as e:
         # Handle any unexpected errors at the top level
         progress.update_status("fundamentals_agent", None, f"\033[91mError: {str(e)}\033[0m")
-        return {
-            "messages": state["messages"],
-            "data": state["data"]
-        }
+        return {"messages": state["messages"], "data": state["data"]}

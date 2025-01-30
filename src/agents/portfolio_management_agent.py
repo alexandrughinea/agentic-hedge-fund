@@ -12,6 +12,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class PortfolioDecision(BaseModel):
     action: Literal["buy", "sell", "hold"]
     quantity: int = Field(description="Number of shares to trade")
@@ -23,7 +24,6 @@ class PortfolioManagerOutput(BaseModel):
     decisions: dict[str, PortfolioDecision] = Field(description="Dictionary of ticker to trading decisions")
 
 
-##### Portfolio Management Agent #####
 def portfolio_management_agent(state: AgentState):
     """Makes final trading decisions and generates orders for multiple tickers"""
     try:
@@ -62,27 +62,30 @@ def portfolio_management_agent(state: AgentState):
                 continue
 
         # Create prompt for the LLM
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are a portfolio manager making trading decisions based on analyst signals.
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    """You are a portfolio manager making trading decisions based on analyst signals.
                 For each ticker, decide whether to buy, sell, or hold based on the signals and confidence levels from different analysts.
                 Consider the maximum allowed position size and current portfolio holdings.
-                Provide clear reasoning for each decision."""),
-            ("human", "{signals}")
-        ])
+                Provide clear reasoning for each decision.""",
+                ),
+                ("human", "{signals}"),
+            ]
+        )
 
         # Make trading decisions
         progress.update_status("portfolio_management_agent", None, "Making trading decisions")
         decisions = make_decision(prompt, signals_by_ticker)
-        
+
         if not decisions:
             progress.update_status("portfolio_management_agent", None, "Error: Failed to make decisions")
             return state
-            
+
         # Update state with decisions
-        state["messages"].append(
-            HumanMessage(content=json.dumps(decisions))
-        )
-        
+        state["messages"].append(HumanMessage(content=json.dumps(decisions)))
+
         progress.update_status("portfolio_management_agent", None, "Done")
         return state
 
@@ -105,9 +108,7 @@ def make_decision(prompt, signals_by_ticker):
         formatted_signals = json.dumps(signals_by_ticker, indent=2)
 
         # Get LLM response
-        response = model.invoke(
-            prompt.format_messages(signals=formatted_signals)
-        )
+        response = model.invoke(prompt.format_messages(signals=formatted_signals))
 
         # Parse the response
         try:
@@ -133,12 +134,7 @@ def make_decision(prompt, signals_by_ticker):
             quantity = max(0, quantity)
             confidence = max(0.0, min(100.0, confidence))
 
-            formatted_decisions[ticker] = {
-                "action": action,
-                "quantity": quantity,
-                "confidence": confidence,
-                "reasoning": reasoning
-            }
+            formatted_decisions[ticker] = {"action": action, "quantity": quantity, "confidence": confidence, "reasoning": reasoning}
 
         return formatted_decisions
 

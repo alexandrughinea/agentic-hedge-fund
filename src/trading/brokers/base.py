@@ -4,15 +4,18 @@ from enum import Enum
 from typing import Dict, List, Optional, Union
 from datetime import datetime
 
+
 class OrderType(Enum):
     MARKET = "market"
     LIMIT = "limit"
     STOP = "stop"
     STOP_LIMIT = "stop_limit"
 
+
 class OrderSide(Enum):
     BUY = "buy"
     SELL = "sell"
+
 
 @dataclass
 class Position:
@@ -22,6 +25,7 @@ class Position:
     current_price: float
     market_value: float
     unrealized_pl: float
+
 
 @dataclass
 class Order:
@@ -34,6 +38,7 @@ class Order:
     time_in_force: str = "day"
     client_order_id: Optional[str] = None
 
+
 @dataclass
 class OrderResponse:
     order_id: str
@@ -43,9 +48,10 @@ class OrderResponse:
     remaining_qty: float
     client_order_id: Optional[str]
 
+
 class BrokerConnector(ABC):
     """Abstract base class for broker connectors."""
-    
+
     @abstractmethod
     def connect(self) -> bool:
         """Establish connection to the broker."""

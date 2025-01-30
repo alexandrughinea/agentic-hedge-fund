@@ -29,15 +29,7 @@ init(autoreset=True)
 
 
 class Backtester:
-    def __init__(
-        self,
-        tickers: list[str],
-        start_date: str,
-        end_date: str,
-        initial_capital: float,
-        selected_analysts: list = None,
-        show_reasoning: bool = False
-    ):
+    def __init__(self, tickers: list[str], start_date: str, end_date: str, initial_capital: float, selected_analysts: list = None, show_reasoning: bool = False):
         self.tickers = tickers
         self.start_date = start_date
         self.end_date = end_date
@@ -97,31 +89,24 @@ class Backtester:
         print(f"Period: {self.start_date} to {self.end_date}")
         print(f"Initial Capital: ${self.initial_capital:,.2f}")
         print(f"Tickers: {', '.join(self.tickers)}")
-        
+
         # Pre-fetch data
         self.prefetch_data()
-        
+
         # Initialize tracking variables
         current_date = datetime.strptime(self.start_date, "%Y-%m-%d")
         end_date = datetime.strptime(self.end_date, "%Y-%m-%d")
-        
+
         while current_date <= end_date:
             date_str = current_date.strftime("%Y-%m-%d")
-            
+
             # Run the hedge fund strategy
-            result = run_hedge_fund(
-                tickers=self.tickers,
-                start_date=self.start_date,
-                end_date=date_str,
-                portfolio=self.portfolio,
-                show_reasoning=self.show_reasoning,
-                selected_analysts=self.selected_analysts
-            )
-            
+            result = run_hedge_fund(tickers=self.tickers, start_date=self.start_date, end_date=date_str, portfolio=self.portfolio, show_reasoning=self.show_reasoning, selected_analysts=self.selected_analysts)
+
             # Update portfolio based on the result
             if result:
                 self.portfolio = result
-                
+
             # Record portfolio value
             total_value = self.portfolio["cash"]
             for ticker in self.tickers:
@@ -129,15 +114,12 @@ class Backtester:
                 if price_data:
                     price = price_data[0].close
                     total_value += self.portfolio["positions"][ticker] * price
-            
-            self.portfolio_values.append({
-                "date": date_str,
-                "value": total_value
-            })
-            
+
+            self.portfolio_values.append({"date": date_str, "value": total_value})
+
             # Move to next day
             current_date += timedelta(days=1)
-            
+
         print(f"\n{Fore.GREEN}Backtest completed successfully!{Style.RESET_ALL}")
 
     def analyze_performance(self):
@@ -170,7 +152,7 @@ class Backtester:
         mean_daily_return = performance_df["Daily Return"].mean()
         std_daily_return = performance_df["Daily Return"].std()
         sharpe_ratio = (mean_daily_return / std_daily_return) * (252**0.5) if std_daily_return != 0 else 0
-        
+
         # Calculate drawdown
         rolling_max = performance_df["Portfolio Value"].cummax()
         drawdown = performance_df["Portfolio Value"] / rolling_max - 1
@@ -187,15 +169,15 @@ class Backtester:
 if __name__ == "__main__":
     # Check if any command line arguments were provided
     cli_mode = len(sys.argv) > 1
-    
+
     # Get analysts from environment variable
     env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
     selected_analysts = [a.strip() for a in env_analysts.split(",")] if env_analysts else []
-    
+
     # Get other settings from environment
     env_tickers = os.getenv("TICKERS", "").strip()
     tickers = [t.strip() for t in env_tickers.split(",")] if env_tickers else []
-    
+
     # Only show CLI interface if in CLI mode
     if cli_mode:
         parser = argparse.ArgumentParser(description="Run backtesting simulation")
@@ -234,7 +216,7 @@ if __name__ == "__main__":
 
         if args.tickers:
             tickers = [ticker.strip() for ticker in args.tickers.split(",")]
-        
+
         if not tickers:
             raise ValueError("No tickers specified. Set either --tickers argument or TICKERS environment variable")
 
@@ -261,7 +243,7 @@ if __name__ == "__main__":
             else:
                 selected_analysts = choices
                 print(f"\nSelected analysts: {', '.join(Fore.GREEN + choice.title().replace('_', ' ') + Style.RESET_ALL for choice in choices)}\n")
-                
+
         start_date = args.start_date
         end_date = args.end_date
         initial_capital = args.initial_capital
@@ -270,11 +252,11 @@ if __name__ == "__main__":
         # Use environment variables
         if not tickers:
             raise ValueError("No tickers specified in TICKERS environment variable")
-            
+
         # If no analysts configured, use all
         if not selected_analysts:
             selected_analysts = [value for _, value in ANALYST_ORDER]
-            
+
         # Get other settings from env
         end_date = os.getenv("END_DATE") or datetime.now().strftime("%Y-%m-%d")
         if not os.getenv("START_DATE"):
@@ -283,19 +265,12 @@ if __name__ == "__main__":
             start_date = (end_date_obj - relativedelta(months=12)).strftime("%Y-%m-%d")
         else:
             start_date = os.getenv("START_DATE")
-            
+
         initial_capital = float(os.getenv("INITIAL_CASH", "100000.0"))
         show_reasoning = os.getenv("SHOW_REASONING", "").lower() == "true"
 
     # Create and run backtester
-    backtester = Backtester(
-        tickers=tickers,
-        start_date=start_date,
-        end_date=end_date,
-        initial_capital=initial_capital,
-        selected_analysts=selected_analysts,
-        show_reasoning=show_reasoning
-    )
+    backtester = Backtester(tickers=tickers, start_date=start_date, end_date=end_date, initial_capital=initial_capital, selected_analysts=selected_analysts, show_reasoning=show_reasoning)
 
     # Run the backtesting process
     backtester.run_backtest()

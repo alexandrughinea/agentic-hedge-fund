@@ -53,16 +53,8 @@ def prices_to_df(prices: List[Price]) -> pd.DataFrame:
     """Convert a list of Price objects to a pandas DataFrame."""
     if not prices:
         return pd.DataFrame()
-    
-    return pd.DataFrame([{
-        'date': price.time.split('T')[0],
-        'open': price.open,
-        'high': price.high,
-        'low': price.low,
-        'close': price.close,
-        'volume': price.volume,
-        'market_cap': price.market_cap
-    } for price in prices])
+
+    return pd.DataFrame([{"date": price.time.split("T")[0], "open": price.open, "high": price.high, "low": price.low, "close": price.close, "volume": price.volume, "market_cap": price.market_cap} for price in prices])
 
 
 def get_price_data(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:

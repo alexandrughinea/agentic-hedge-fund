@@ -6,7 +6,6 @@ import json
 from tools.api import get_financial_metrics, get_market_cap, search_line_items
 
 
-##### Valuation Agent #####
 def valuation_agent(state: AgentState):
     """Performs detailed valuation analysis using multiple methodologies for multiple tickers."""
     data = state["data"]
@@ -30,7 +29,7 @@ def valuation_agent(state: AgentState):
         if not financial_metrics:
             progress.update_status("valuation_agent", ticker, "Failed: No financial metrics found")
             continue
-        
+
         metrics = financial_metrics[0]
 
         progress.update_status("valuation_agent", ticker, "Gathering line items")
@@ -86,14 +85,10 @@ def valuation_agent(state: AgentState):
         progress.update_status("valuation_agent", ticker, "Comparing to market value")
         # Get the market cap
         market_cap = get_market_cap(ticker=ticker, end_date=end_date)
-        
+
         # Handle case where market cap is not available
         if not market_cap:
-            valuation_analysis[ticker] = {
-                "signal": "neutral",
-                "confidence": 0,
-                "reasoning": "Could not calculate valuation metrics due to missing market cap data"
-            }
+            valuation_analysis[ticker] = {"signal": "neutral", "confidence": 0, "reasoning": "Could not calculate valuation metrics due to missing market cap data"}
             continue
 
         # Calculate combined valuation gap (average of both methods)

@@ -4,7 +4,6 @@ from rich.table import Table
 from rich.style import Style
 from rich.text import Text
 from typing import Dict, Optional
-from datetime import datetime
 
 console = Console()
 
@@ -52,9 +51,9 @@ class AgentProgress:
             agent_name = item[0].lower()
             if "trading_executor" in agent_name:
                 return (4, agent_name)  # Show last
-            elif "risk_management" in agent_name:
+            elif "risk_management_agent" in agent_name:
                 return (2, agent_name)
-            elif "portfolio_management" in agent_name:
+            elif "portfolio_management_agent" in agent_name:
                 return (3, agent_name)
             else:
                 return (1, agent_name)

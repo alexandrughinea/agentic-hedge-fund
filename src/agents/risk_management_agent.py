@@ -5,7 +5,6 @@ from tools.api import get_prices, prices_to_df
 import json
 
 
-##### Risk Management Agent #####
 def risk_management_agent(state: AgentState):
     """Controls position sizing based on real-world risk factors for multiple tickers."""
     portfolio = state["data"]["portfolio"]

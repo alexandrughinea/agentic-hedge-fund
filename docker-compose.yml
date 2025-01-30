@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  hedge-fund:
+  agentic-hedge-fund:
     build: .
     volumes:
       - .:/app

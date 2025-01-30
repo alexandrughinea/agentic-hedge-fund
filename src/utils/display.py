@@ -1,5 +1,4 @@
 from colorama import Fore, Style
-from tabulate import tabulate
 from .analysts import ANALYST_ORDER
 import os
 from rich.console import Console
@@ -12,10 +11,10 @@ console = Console()
 def sort_analyst_signals(signals):
     """Sort analyst signals in a consistent order."""
     # Create order mapping from ANALYST_ORDER
-    analyst_order = {display: idx for idx, (display, _) in enumerate(ANALYST_ORDER)}
-    analyst_order["Risk Management"] = len(ANALYST_ORDER)  # Add Risk Management at the end
+    analyst_order = {agent: idx for idx, agent in enumerate(ANALYST_ORDER)}
+    analyst_order["risk_management_agent"] = len(ANALYST_ORDER)  # Add Risk Management at the end
 
-    return sorted(signals, key=lambda x: analyst_order.get(x[0], 999))
+    return sorted(signals, key=lambda x: analyst_order.get(x[0].lower().replace(" ", "_"), 999))
 
 
 def print_trading_output(result: Dict[str, Any]) -> None:
@@ -27,16 +26,20 @@ def print_trading_output(result: Dict[str, Any]) -> None:
     """
     decisions = result.get("decisions")
     if not decisions:
-        console.print(f"{Fore.RED}No trading decisions available{Style.RESET_ALL}")
+        console.print("[red]No trading decisions available[/]")
         return
 
     # Print decisions for each ticker
     for ticker, decision in decisions.items():
-        console.print(f"\n{Fore.WHITE}{Style.BRIGHT}Analysis for {Fore.CYAN}{ticker}{Style.RESET_ALL}")
-        console.print(f"{Fore.WHITE}{Style.BRIGHT}{'=' * 50}{Style.RESET_ALL}")
+        console.print(f"\n[white bold]Analysis for [cyan]{ticker}[/]")
+        console.print("[white bold]" + "=" * 50 + "[/]")
 
         # Prepare analyst signals table for this ticker
-        table_data = []
+        signals_table = Table(title=f"[white bold]ANALYST SIGNALS: [cyan]{ticker}[/]")
+        signals_table.add_column("Analyst", style="cyan")
+        signals_table.add_column("Signal", justify="center")
+        signals_table.add_column("Confidence", justify="right", style="yellow")
+
         for agent, signals in result.get("analyst_signals", {}).items():
             if ticker not in signals:
                 continue
@@ -45,84 +48,54 @@ def print_trading_output(result: Dict[str, Any]) -> None:
             agent_name = agent.replace("_agent", "").replace("_", " ").title()
             signal_type = signal.get("signal", "").upper()
 
-            signal_color = {
-                "BULLISH": Fore.GREEN,
-                "BEARISH": Fore.RED,
-                "NEUTRAL": Fore.YELLOW,
-            }.get(signal_type, Fore.WHITE)
+            signal_style = {
+                "BULLISH": "green",
+                "BEARISH": "red",
+                "NEUTRAL": "yellow",
+            }.get(signal_type, "white")
 
-            table_data.append(
-                [
-                    f"{Fore.CYAN}{agent_name}{Style.RESET_ALL}",
-                    f"{signal_color}{signal_type}{Style.RESET_ALL}",
-                    f"{Fore.YELLOW}{signal.get('confidence')}%{Style.RESET_ALL}",
-                ]
-            )
+            signals_table.add_row(agent_name, f"[{signal_style}]{signal_type}[/]", f"{signal.get('confidence')}%")
 
-        # Sort the signals according to the predefined order
-        table_data = sort_analyst_signals(table_data)
-
-        console.print(f"\n{Fore.WHITE}{Style.BRIGHT}ANALYST SIGNALS:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
-        console.print(
-            tabulate(
-                table_data,
-                headers=[f"{Fore.WHITE}Analyst", "Signal", "Confidence"],
-                tablefmt="grid",
-                colalign=("left", "center", "right"),
-            )
-        )
+        # Sort and display signals
+        console.print(signals_table)
 
         # Print Trading Decision Table
-        action = decision.get("action", "").upper()
-        action_color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
+        decision_table = Table(title=f"[white bold]TRADING DECISION: [cyan]{ticker}[/]")
+        decision_table.add_column("Metric", style="white")
+        decision_table.add_column("Value", justify="right")
 
-        decision_data = [
-            ["Action", f"{action_color}{action}{Style.RESET_ALL}"],
-            ["Quantity", f"{action_color}{decision.get('quantity', 'N/A')}{Style.RESET_ALL}"],
-        ]
+        action = decision.get("action", "").upper()
+        action_style = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}.get(action, "white")
+
+        decision_table.add_row("Action", f"[{action_style}]{action}[/]")
+        decision_table.add_row("Quantity", f"[{action_style}]{decision.get('quantity', 'N/A')}[/]")
 
         # Add confidence if available and valid
-        confidence = decision.get('confidence')
+        confidence = decision.get("confidence")
         if confidence is not None and isinstance(confidence, (int, float)):
-            decision_data.append([
-                "Confidence",
-                f"{Fore.YELLOW}{confidence:.1f}%{Style.RESET_ALL}",
-            ])
+            decision_table.add_row("Confidence", f"{confidence:.1f}%")
         else:
-            decision_data.append([
-                "Confidence",
-                f"{Fore.YELLOW}N/A{Style.RESET_ALL}",
-            ])
+            decision_table.add_row("Confidence", "N/A")
 
-        console.print(f"\n{Fore.WHITE}{Style.BRIGHT}TRADING DECISION:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
-        console.print(tabulate(decision_data, tablefmt="grid", colalign=("left", "right")))
+        console.print(decision_table)
 
         # Print Reasoning
-        console.print(f"\n{Fore.WHITE}{Style.BRIGHT}Reasoning:{Style.RESET_ALL} {Fore.CYAN}{decision.get('reasoning')}{Style.RESET_ALL}")
+        console.print(f"\n[white bold]Reasoning:[/] [cyan]{decision.get('reasoning')}[/]")
 
     # Print Portfolio Summary
-    console.print(f"\n{Fore.WHITE}{Style.BRIGHT}PORTFOLIO SUMMARY:{Style.RESET_ALL}")
-    portfolio_data = []
+    portfolio_table = Table(title="[white bold]PORTFOLIO SUMMARY[/]")
+    portfolio_table.add_column("Ticker", style="cyan")
+    portfolio_table.add_column("Action", justify="center")
+    portfolio_table.add_column("Quantity", justify="right")
+    portfolio_table.add_column("Confidence", justify="right", style="yellow")
+
     for ticker, decision in decisions.items():
         action = decision.get("action", "").upper()
-        action_color = {"BUY": Fore.GREEN, "SELL": Fore.RED, "HOLD": Fore.YELLOW}.get(action, Fore.WHITE)
-        portfolio_data.append(
-            [
-                f"{Fore.CYAN}{ticker}{Style.RESET_ALL}",
-                f"{action_color}{action}{Style.RESET_ALL}",
-                f"{action_color}{decision.get('quantity')}{Style.RESET_ALL}",
-                f"{Fore.YELLOW}{decision.get('confidence'):.1f}%{Style.RESET_ALL}",
-            ]
-        )
+        action_style = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}.get(action, "white")
 
-    console.print(
-        tabulate(
-            portfolio_data,
-            headers=[f"{Fore.WHITE}Ticker", "Action", "Quantity", "Confidence"],
-            tablefmt="grid",
-            colalign=("left", "center", "right", "right"),
-        )
-    )
+        portfolio_table.add_row(ticker, f"[{action_style}]{action}[/]", f"[{action_style}]{decision.get('quantity')}[/]", f"{decision.get('confidence', 0):.1f}%")
+
+    console.print("\n", portfolio_table)
 
 
 def print_backtest_results(table_rows: list) -> None:
@@ -141,50 +114,41 @@ def print_backtest_results(table_rows: list) -> None:
             ticker_rows.append(row)
 
     # Print the table with just ticker rows
-    console.print(
-        tabulate(
-            ticker_rows,
-            headers=[
-                "Date",
-                "Ticker",
-                "Action",
-                "Quantity",
-                "Price",
-                "Shares",
-                "Position Value",
-                "Bullish",
-                "Bearish",
-                "Neutral",
-            ],
-            tablefmt="grid",
-            colalign=(
-                "left",  # Date
-                "left",  # Ticker
-                "center",  # Action
-                "right",  # Quantity
-                "right",  # Price
-                "right",  # Shares
-                "right",  # Position Value
-                "right",  # Bullish
-                "right",  # Bearish
-                "right",  # Neutral
-            ),
+    table = Table(title="Backtest Results")
+    table.add_column("Date", style="white")
+    table.add_column("Ticker", style="cyan")
+    table.add_column("Action", justify="center")
+    table.add_column("Quantity", justify="right")
+    table.add_column("Price", justify="right")
+    table.add_column("Shares", justify="right")
+    table.add_column("Position Value", justify="right", style="yellow")
+    table.add_column("Bullish", justify="right", style="green")
+    table.add_column("Bearish", justify="right", style="red")
+    table.add_column("Neutral", justify="right", style="blue")
+
+    for row in ticker_rows:
+        table.add_row(
+            row[0],
+            f"[cyan]{row[1]}[/]",
+            f"[{Fore.GREEN if row[2] == 'BUY' else Fore.RED if row[2] == 'SELL' else Fore.YELLOW if row[2] == 'HOLD' else Fore.WHITE}]{row[2]}[/]",
+            f"[{Fore.GREEN if row[2] == 'BUY' else Fore.RED if row[2] == 'SELL' else Fore.YELLOW if row[2] == 'HOLD' else Fore.WHITE}]{row[3]:,.0f}[/]",
+            f"{row[4]:,.2f}",
+            f"{row[5]:,.0f}",
+            f"{row[6]:,.2f}",
+            f"{row[7]}",
+            f"{row[8]}",
+            f"{row[9]}",
         )
-    )
+
+    console.print(table)
 
     # Display latest portfolio summary
     if summary_rows:
         latest_summary = summary_rows[-1]
-        console.print(f"\n{Fore.WHITE}{Style.BRIGHT}PORTFOLIO SUMMARY:{Style.RESET_ALL}")
-
-        # Extract values and remove commas before converting to float
-        cash_str = latest_summary[7].split("$")[1].split(Style.RESET_ALL)[0].replace(",", "")
-        position_str = latest_summary[6].split("$")[1].split(Style.RESET_ALL)[0].replace(",", "")
-        total_str = latest_summary[8].split("$")[1].split(Style.RESET_ALL)[0].replace(",", "")
-
-        console.print(f"Cash Balance: {Fore.CYAN}${float(cash_str):,.2f}{Style.RESET_ALL}")
-        console.print(f"Total Position Value: {Fore.YELLOW}${float(position_str):,.2f}{Style.RESET_ALL}")
-        console.print(f"Total Value: {Fore.WHITE}${float(total_str):,.2f}{Style.RESET_ALL}")
+        console.print(f"\n[white bold]PORTFOLIO SUMMARY:[/]")
+        console.print(f"Cash Balance: [cyan]${float(latest_summary[7].split('$')[1].split(Style.RESET_ALL)[0].replace(',', '')):,.2f}[/]")
+        console.print(f"Total Position Value: [yellow]${float(latest_summary[6].split('$')[1].split(Style.RESET_ALL)[0].replace(',', '')):,.2f}[/]")
+        console.print(f"Total Value: [white]${float(latest_summary[8].split('$')[1].split(Style.RESET_ALL)[0].replace(',', '')):,.2f}[/]")
         console.print(f"Return: {latest_summary[9]}")
 
     # Add vertical spacing for progress display
