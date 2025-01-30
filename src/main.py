@@ -241,6 +241,7 @@ def main():
     parser.add_argument('--show-reasoning', action='store_true', help='Show detailed reasoning')
     parser.add_argument('--autonomous', action='store_true', help='Run in autonomous mode')
     parser.add_argument('--interval', type=int, help='Trading interval in minutes (autonomous mode only)')
+    parser.add_argument('--analysts', type=str, help='Comma-separated list of analysts (overrides SELECTED_ANALYSTS)')
     args = parser.parse_args()
 
     # Get configuration from environment or CLI args
@@ -277,31 +278,42 @@ def main():
             print("\nStopping autonomous trading...")
             scheduler.stop()
     else:
-        # Interactive mode
         try:
-            # Run a single trading cycle
             print(f"\nStarting trading cycle for: {', '.join(tickers)}")
             
-            # Select analysts
-            print("\nSelect analysts to use:")
-            analysts = get_analysts()
-            choices = [
-                {"name": "Technical Analyst", "value": "technical_analyst"},
-                {"name": "Fundamentals Analyst", "value": "fundamentals_analyst"},
-                {"name": "Sentiment Analyst", "value": "sentiment_analyst"},
-                {"name": "Valuation Analyst", "value": "valuation_analyst"}
-            ]
-            selected = questionary.checkbox(
-                "Choose analysts:",
-                choices=choices
-            ).ask()
-            
-            if not selected:
-                print("No analysts selected. Using all analysts.")
-                selected = None
+            # Check for analysts in command line args first, then env
+            selected_analysts = None
+            if args.analysts:
+                selected_analysts = [a.strip() for a in args.analysts.split(',')]
+                print(f"Using command line analysts: {', '.join(selected_analysts)}")
+            else:
+                env_analysts = os.getenv("SELECTED_ANALYSTS", "").strip()
+                if env_analysts:
+                    selected_analysts = [a.strip() for a in env_analysts.split(',')]
+                    print(f"Using configured analysts: {', '.join(selected_analysts)}")
+                else:
+                    # No analysts configured, show selection prompt
+                    print("\nSelect analysts to use:")
+                    choices = [
+                        {"name": "Technical Analyst", "value": "technical_analyst"},
+                        {"name": "Fundamentals Analyst", "value": "fundamentals_analyst"},
+                        {"name": "Sentiment Analyst", "value": "sentiment_analyst"},
+                        {"name": "Valuation Analyst", "value": "valuation_analyst"}
+                    ]
+                    selected = questionary.checkbox(
+                        "Choose analysts:",
+                        choices=choices,
+                        validate=lambda x: len(x) > 0 or "You must select at least one analyst."
+                    ).ask()
+                    
+                    if not selected:
+                        print("No analysts selected. Using all analysts.")
+                    else:
+                        selected_analysts = selected
+                        print(f"\nSelected analysts: {', '.join(selected)}")
 
             # Run the trading cycle
-            result = run_trading_cycle(tickers, selected)
+            result = run_trading_cycle(tickers, selected_analysts)
             
             if result.get("error"):
                 print(f"\n{Fore.RED}Trading cycle failed: {result['error']}{Style.RESET_ALL}")
