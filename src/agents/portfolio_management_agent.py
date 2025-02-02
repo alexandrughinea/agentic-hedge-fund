@@ -139,10 +139,10 @@ def portfolio_management_agent(state: AgentState) -> AgentState:
         )
 
         if not decisions:
-            logger.error("Failed to generate trading decisions")
-            return state
-        
-        progress.update_status("portfolio_management_agent", None, "Done")
+            message = "Failed to generate trading decisions"
+            logger.error(message)
+            progress.update_status("portfolio_management_agent", None, message)
+        return state
 
         # Update state with decisions
         state["decisions"] = decisions
